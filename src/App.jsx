@@ -6,7 +6,6 @@ import {
   ChevronDown,
   Clock3,
   IndianRupee,
-  LocateFixed,
   MapPin,
   Navigation,
   Route,
@@ -19,7 +18,7 @@ import {
   WalletCards,
 } from 'lucide-react'
 import './App.css'
-import { venues } from './data/venues.js'
+import { venues as seededVenues } from './data/venues.js'
 
 const loadingSteps = [
   'Finding reachable neighbourhoods',
@@ -183,7 +182,7 @@ function Journey({ name, route }) {
 function App() {
   const [form, setForm] = useState({
     person1: '', location1: '', person2: '', location2: '',
-    location1Coords: { lat: 10.1097, lng: 76.3505 }, location2Coords: { lat: 10.0394, lng: 76.3286 },
+    location1Coords: null, location2Coords: null,
     date: new Date().toISOString().slice(0, 10), time: '19:20', duration: '90', purpose: 'Romantic date', moods: ['Quiet', 'Scenic'],
     travelBudget: 120, meetingBudget: 800, maxWalking: 900, returnRequired: true,
   })
@@ -192,9 +191,12 @@ function App() {
   const [sort, setSort] = useState('match')
   const [selectedId, setSelectedId] = useState(1)
   const [copied, setCopied] = useState(false)
+  const [venueOptions, setVenueOptions] = useState(seededVenues)
+  const [dataSource, setDataSource] = useState('curated')
+  const [sourceMessage, setSourceMessage] = useState('Curated Kochi data is ready as a fallback.')
 
   const ranked = useMemo(() => {
-    const calculated = venues.map((venue) => scoreVenue(venue, form))
+    const calculated = venueOptions.map((venue) => scoreVenue(venue, form))
     return calculated.sort((a, b) => {
       if (sort === 'fairness') return b.fairness - a.fairness
       if (sort === 'fastest') return Math.max(...a.routes.map((r) => r.minutes)) - Math.max(...b.routes.map((r) => r.minutes))
@@ -202,9 +204,14 @@ function App() {
       if (sort === 'walking') return Math.max(...a.routes.map((r) => r.walk)) - Math.max(...b.routes.map((r) => r.walk))
       return b.match + b.fairness - (a.match + a.fairness)
     })
-  }, [form, sort])
+  }, [form, sort, venueOptions])
 
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }))
+  const updateLocation = (locationKey, coordinateKey, value) => setForm((current) => ({
+    ...current,
+    [locationKey]: value,
+    [coordinateKey]: null,
+  }))
   const updatePlace = (locationKey, coordinateKey, place) => setForm((current) => ({
     ...current,
     [locationKey]: place.address,
@@ -215,20 +222,52 @@ function App() {
     moods: current.moods.includes(mood) ? current.moods.filter((item) => item !== mood) : [...current.moods, mood].slice(-3),
   }))
 
-  const search = (event) => {
+  const search = async (event) => {
     event.preventDefault()
     setView('loading')
     setLoadingIndex(0)
+    const startedAt = Date.now()
     let step = 0
     const interval = window.setInterval(() => {
       step += 1
       setLoadingIndex(Math.min(step, loadingSteps.length - 1))
     }, 420)
-    window.setTimeout(() => {
+
+    try {
+      const response = await fetch('/api/venues/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || 'Venue search failed')
+      if (!payload.venues?.length) throw new Error('No suitable venues were returned')
+
+      setVenueOptions(payload.venues)
+      setDataSource(payload.source)
+      setSourceMessage(payload.warning || (payload.source === 'google'
+        ? `${payload.venues.length} live Google venues with transit routes were compared.`
+        : 'Using the curated Kochi fallback dataset.'))
+      setSelectedId(payload.venues[0].id)
+      if (payload.origins) {
+        setForm((current) => ({
+          ...current,
+          location1Coords: payload.origins[0],
+          location2Coords: payload.origins[1],
+        }))
+      }
+    } catch (error) {
+      setVenueOptions(seededVenues)
+      setDataSource('curated')
+      setSourceMessage(`${error.message}. Showing reliable curated Kochi data instead.`)
+      setSelectedId(seededVenues[0].id)
+    } finally {
+      const remainingDelay = Math.max(0, 1500 - (Date.now() - startedAt))
+      await new Promise((resolve) => window.setTimeout(resolve, remainingDelay))
       window.clearInterval(interval)
       setView('results')
       window.scrollTo({ top: 0, behavior: 'smooth' })
-    }, 1900)
+    }
   }
 
   const share = async () => {
@@ -279,9 +318,10 @@ function App() {
           <button className="share-button" onClick={share}>{copied ? <Check size={18} /> : <Share2 size={18} />}{copied ? 'Copied' : 'Share plan'}</button>
         </header>
         <section className="results-hero">
-          <p className="eyebrow">{ranked.length} places compared</p>
+          <p className="eyebrow">{ranked.length} places compared · {dataSource === 'google' ? 'Live Google data' : 'Curated fallback'}</p>
           <h1>Fair options for <em>both of you.</em></h1>
           <p>Ranked by travel effort, cost, walking, opening hours, and your preferences.</p>
+          <div className={`source-note ${dataSource}`}>{sourceMessage}</div>
         </section>
         <section className="winner-grid">
           {winners.map(({ label, icon, venue }, index) => (
@@ -312,11 +352,11 @@ function App() {
                       ))}
                       <div className="fair-score"><span>Fairness</span><strong>{venue.fairness}<small>/100</small></strong></div>
                     </div>
-                    <div className="venue-meta"><span><IndianRupee size={15} />₹{venue.venueCost} for two</span><span><Clock3 size={15} />Open until {venue.closes}</span><span><Route size={15} />{venue.walkFromTransit} m from transit</span></div>
+                    <div className="venue-meta"><span><IndianRupee size={15} />₹{venue.venueCost} for two</span><span><Clock3 size={15} />Open until {venue.closes}</span><span><Route size={15} />{venue.walkFromTransit} m from transit</span><span>{venue.rating} rating{venue.ratingCount ? ` · ${venue.ratingCount} reviews` : ''}</span></div>
                     <details onClick={(e) => e.stopPropagation()}>
                       <summary>See both journeys <ArrowRight size={16} /></summary>
                       <div className="journey-grid"><Journey name={form.person1} route={venue.routes[0]} /><Journey name={form.person2} route={venue.routes[1]} /></div>
-                      <div className="return-note"><Check size={17} /><div><strong>Return trip looks good</strong><span>Public transport is available until {venue.routes[0].returnBy} for {form.person1} and {venue.routes[1].returnBy} for {form.person2}.</span></div></div>
+                      <div className="return-note"><Check size={17} /><div><strong>{venue.returnFeasible === false ? 'Return trip needs checking' : 'Return trip looks good'}</strong><span>{venue.returnNote || `Estimated home times are ${venue.routes[0].returnBy} for ${form.person1} and ${venue.routes[1].returnBy} for ${form.person2}.`}</span></div></div>
                     </details>
                   </div>
                 </article>
@@ -324,7 +364,11 @@ function App() {
             </div>
           </div>
           <aside className="map-panel">
-            <iframe title={`Map showing ${selected.name}`} src={`https://www.openstreetmap.org/export/embed.html?bbox=${selected.lon - 0.018}%2C${selected.lat - 0.012}%2C${selected.lon + 0.018}%2C${selected.lat + 0.012}&layer=mapnik&marker=${selected.lat}%2C${selected.lon}`} />
+            {selected.source === 'google' ? (
+              <a className="google-map-link" href={selected.googleMapsUri} target="_blank" rel="noreferrer"><MapPin size={28} /><strong>View live place details</strong><span>Open {selected.name} in Google Maps</span><ArrowRight size={18} /></a>
+            ) : (
+              <iframe title={`Map showing ${selected.name}`} src={`https://www.openstreetmap.org/export/embed.html?bbox=${selected.lon - 0.018}%2C${selected.lat - 0.012}%2C${selected.lon + 0.018}%2C${selected.lat + 0.012}&layer=mapnik&marker=${selected.lat}%2C${selected.lon}`} />
+            )}
             <div className="map-caption"><span className="map-pin"><MapPin size={18} /></span><div><strong>{selected.name}</strong><span>{selected.area} · {selected.fairness}/100 fairness</span></div></div>
             <button className="edit-plan" onClick={() => setView('form')}>Edit preferences</button>
           </aside>
@@ -346,14 +390,14 @@ function App() {
           <div className="person-card person-one">
             <div className="person-label"><span>1</span><div><strong>First traveller</strong><small>Where are they starting?</small></div></div>
             <label>Name<input required value={form.person1} onChange={(e) => update('person1', e.target.value)} placeholder="Enter you name" /></label>
-            <label>Starting location<GooglePlaceField value={form.location1} onChange={(value) => update('location1', value)} onPlaceSelect={(place) => updatePlace('location1', 'location1Coords', place)} travellerName={form.person1} /></label>
+            <label>Starting location<GooglePlaceField value={form.location1} onChange={(value) => updateLocation('location1', 'location1Coords', value)} onPlaceSelect={(place) => updatePlace('location1', 'location1Coords', place)} travellerName={form.person1} /></label>
             <div className="transport-row"><span><TrainFront size={15} />Metro</span><span><Bus size={15} />Bus</span><span><Ship size={15} />Water Metro</span></div>
           </div>
           <div className="meeting-mark"><span><MapPin size={22} /></span><small>FAIR<br />SPOT</small></div>
           <div className="person-card person-two">
             <div className="person-label"><span>2</span><div><strong>Second traveller</strong><small>Where are they starting?</small></div></div>
             <label>Name<input required value={form.person2} onChange={(e) => update('person2', e.target.value)} placeholder="Enter you name" /></label>
-            <label>Starting location<GooglePlaceField value={form.location2} onChange={(value) => update('location2', value)} onPlaceSelect={(place) => updatePlace('location2', 'location2Coords', place)} travellerName={form.person2} /></label>
+            <label>Starting location<GooglePlaceField value={form.location2} onChange={(value) => updateLocation('location2', 'location2Coords', value)} onPlaceSelect={(place) => updatePlace('location2', 'location2Coords', place)} travellerName={form.person2} /></label>
             <div className="transport-row"><span><TrainFront size={15} />Metro</span><span><Bus size={15} />Bus</span><span><Ship size={15} />Water Metro</span></div>
           </div>
         </section>
@@ -374,9 +418,9 @@ function App() {
           </div>
           <label className="toggle"><input type="checkbox" checked={form.returnRequired} onChange={(e) => update('returnRequired', e.target.checked)} /><span /><div><strong>Public transport home required</strong><small>Only show plans with a practical return journey</small></div></label>
         </section>
-        <div className="submit-zone"><div><strong>Ready to meet in the middle?</strong><span>We’ll compare {venues.length} Kochi venues and every useful route combination.</span></div><button type="submit"><Search size={19} />Find our fair spot<ArrowRight size={19} /></button></div>
+        <div className="submit-zone"><div><strong>Ready to meet in the middle?</strong><span>We’ll search live Kochi venues and compare transit for both travellers.</span></div><button type="submit"><Search size={19} />Find our fair spot<ArrowRight size={19} /></button></div>
       </form>
-      <footer><span>Halfway</span><p>Demo routes use curated Kochi transit data. Bus timings are estimates and include confidence labels.</p></footer>
+      <footer><span>Halfway</span><p>Live Google Places and Routes when configured, with a clearly labelled curated fallback. <b>Built using OpenAI Codex.</b></p></footer>
     </main>
   )
 }

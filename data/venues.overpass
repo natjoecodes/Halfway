@@ -1,0 +1,8 @@
+[out:json][timeout:120];
+(
+  nwr["name"]["amenity"~"^(cafe|restaurant|library|coworking_space)$"](9.90,76.20,10.18,76.43);
+  nwr["name"]["leisure"="park"](9.90,76.20,10.18,76.43);
+  nwr["name"]["tourism"~"^(museum|gallery)$"](9.90,76.20,10.18,76.43);
+  nwr["name"]["historic"](9.90,76.20,10.18,76.43);
+);
+out center tags;

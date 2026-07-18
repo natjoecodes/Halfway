@@ -11,6 +11,12 @@ node_modules
 dist
 build
 coverage
+data/otp/*.osm
+data/otp/*.pbf
+data/otp/*.jar
+data/otp/graph.obj
+data/cache/*
+!data/cache/.gitkeep
 
 # Environment
 .env

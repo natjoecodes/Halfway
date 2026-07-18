@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowRight,
   Bus,
@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Clock3,
   IndianRupee,
+  LocateFixed,
   MapPin,
   Navigation,
   Route,
@@ -18,7 +19,6 @@ import {
   WalletCards,
 } from 'lucide-react'
 import './App.css'
-import { venues as seededVenues } from './data/venues.js'
 
 const loadingSteps = [
   'Finding reachable neighbourhoods',
@@ -29,127 +29,86 @@ const loadingSteps = [
 
 const purposes = ['Romantic date', 'Business meeting', 'Friends hanging out', 'Casual catch-up', 'Work / study session']
 const moods = ['Quiet', 'Lively', 'Scenic', 'Private', 'Outdoor', 'Laptop-friendly']
-const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-let googleMapsLoader
+function LocationField({ value, onChange, onPlaceSelect }) {
+  const [suggestions, setSuggestions] = useState([])
+  const [open, setOpen] = useState(false)
+  const [locating, setLocating] = useState(false)
 
-function loadGoogleMaps() {
-  if (window.google?.maps?.importLibrary) return Promise.resolve(window.google.maps)
-  if (!googleMapsApiKey) return Promise.reject(new Error('Google Maps API key is not configured'))
-  if (googleMapsLoader) return googleMapsLoader
-
-  googleMapsLoader = new Promise((resolve, reject) => {
-    const callbackName = '__halfwayGoogleMapsReady'
-    window[callbackName] = () => {
-      delete window[callbackName]
-      resolve(window.google.maps)
-    }
-
-    const script = document.createElement('script')
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleMapsApiKey)}&loading=async&libraries=places&v=weekly&callback=${callbackName}`
-    script.async = true
-    script.onerror = () => reject(new Error('Google Maps could not be loaded'))
-    document.head.appendChild(script)
-  })
-
-  return googleMapsLoader
-}
-
-function GooglePlaceField({ value, onChange, onPlaceSelect, travellerName }) {
-  const containerRef = useRef(null)
-  const callbacksRef = useRef({ onChange, onPlaceSelect })
-  const [loadError, setLoadError] = useState('')
-
-  callbacksRef.current = { onChange, onPlaceSelect }
-
-  useEffect(() => {
-    if (!googleMapsApiKey) return undefined
-    let autocomplete
-    let disposed = false
-
-    const handleInput = (event) => {
-      callbacksRef.current.onChange(event.target.value || '')
-    }
-
-    const handlePlaceSelect = async (event) => {
-      const place = event.placePrediction.toPlace()
-      await place.fetchFields({ fields: ['displayName', 'formattedAddress', 'location', 'id'] })
-      const address = place.formattedAddress || place.displayName
-      autocomplete.value = address
-      callbacksRef.current.onPlaceSelect({
-        address,
-        placeId: place.id,
-        lat: place.location?.lat(),
-        lng: place.location?.lng(),
-      })
-    }
-
-    loadGoogleMaps()
-      .then(async () => {
-        const { PlaceAutocompleteElement } = await window.google.maps.importLibrary('places')
-        if (disposed || !containerRef.current) return
-
-        autocomplete = new PlaceAutocompleteElement({
-          includedRegionCodes: ['in'],
-          locationBias: { center: { lat: 9.9816, lng: 76.2999 }, radius: 50000 },
-        })
-        autocomplete.className = 'google-place-autocomplete'
-        autocomplete.placeholder = 'Enter you location'
-        autocomplete.description = `Starting location for ${travellerName || 'traveller'}`
-        autocomplete.value = value
-        autocomplete.addEventListener('input', handleInput)
-        autocomplete.addEventListener('gmp-select', handlePlaceSelect)
-        containerRef.current.replaceChildren(autocomplete)
-      })
-      .catch(() => setLoadError('Google location search is unavailable. Check the API key and Places API setup.'))
-
-    return () => {
-      disposed = true
-      if (autocomplete) {
-        autocomplete.removeEventListener('input', handleInput)
-        autocomplete.removeEventListener('gmp-select', handlePlaceSelect)
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) return
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+      try {
+        const response = await fetch(`/api/locations/reverse?lat=${coords.latitude}&lon=${coords.longitude}`)
+        onPlaceSelect(await response.json())
+      } finally {
+        setLocating(false)
       }
-    }
-  }, [travellerName, value])
-
-  if (!googleMapsApiKey) {
-    return (
-      <>
-        <div className="input-icon google-fallback">
-          <MapPin size={18} />
-          <input
-            required
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            
-            placeholder="Enter you location"
-          />
-        </div>
-        {loadError && <small className="location-message">{loadError}</small>}
-      </>
-    )
+    }, () => setLocating(false), { enableHighAccuracy: true, timeout: 10000 })
   }
 
+  useEffect(() => {
+    if (!open || value.trim().length < 2) {
+      setSuggestions([])
+      return undefined
+    }
+    const controller = new AbortController()
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/locations/suggest?q=${encodeURIComponent(value)}`, { signal: controller.signal })
+        const payload = await response.json()
+        setSuggestions(payload.suggestions || [])
+      } catch (error) {
+        if (error.name !== 'AbortError') setSuggestions([])
+      }
+    }, 180)
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [open, value])
+
   return (
-    <>
-      <div className="google-place-shell"><MapPin size={18} /><div ref={containerRef} className="google-place-host"><span>Loading Google Maps...</span></div></div>
-      {loadError && <small className="location-message error">{loadError}</small>}
-    </>
+    <div className="location-field">
+      <div className="input-icon">
+        <MapPin size={18} />
+        <input
+          required
+          value={value}
+          onFocus={() => setOpen(true)}
+          onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+          onChange={(event) => {
+            onChange(event.target.value)
+            setOpen(true)
+          }}
+          placeholder="Enter you location"
+          autoComplete="off"
+        />
+      </div>
+      <button className="gps-button" type="button" onClick={useCurrentLocation}><LocateFixed size={15} />{locating ? 'Locating...' : 'Use exact GPS location'}</button>
+      {open && suggestions.length > 0 && (
+        <div className="location-suggestions">
+          {suggestions.map((place) => (
+            <button type="button" key={`${place.name}-${place.lat}-${place.lon}`} onMouseDown={(event) => event.preventDefault()} onClick={() => {
+              onPlaceSelect(place)
+              setOpen(false)
+            }}>
+              <MapPin size={15} /><span><strong>{place.name}</strong><small>{place.address || place.area}</small></span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
-function effort(route) {
-  return route.minutes + (route.walk / 80) * 0.5 + route.transfers * 5 + route.wait * 0.5 + route.fare / 10
-}
-
-function scoreVenue(venue, form) {
-  const efforts = venue.routes.map(effort)
-  const fairness = Math.max(55, Math.round(100 - Math.abs(efforts[0] - efforts[1]) * 2))
-  const moodMatch = form.moods.reduce((sum, mood) => sum + (venue.tags.includes(mood) ? 5 : 0), 0)
-  const budgetPenalty = venue.venueCost > form.meetingBudget ? 10 : 0
-  const walkPenalty = Math.max(...venue.routes.map((route) => route.walk)) > form.maxWalking ? 8 : 0
-  const purposeMatch = venue.tags.some((tag) => form.purpose.toLowerCase().includes(tag.toLowerCase())) ? 5 : 0
-  const match = Math.min(98, Math.round(68 + venue.rating * 3 + moodMatch + purposeMatch - budgetPenalty - walkPenalty))
-  return { ...venue, fairness, match, totalCost: venue.venueCost + venue.routes[0].fare + venue.routes[1].fare }
+function initialMeetingDate() {
+  const date = new Date(Date.now() + 90 * 60000)
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(date)
+  const get = (type) => parts.find((part) => part.type === type)?.value
+  return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}` }
 }
 
 function Journey({ name, route }) {
@@ -173,17 +132,20 @@ function Journey({ name, route }) {
       </div>
       <div className="journey-foot">
         <span>Leave by <strong>{route.leave}</strong></span>
-        <span className={`confidence ${route.confidence.toLowerCase()}`}>{route.confidence} confidence</span>
+        <span className="confidence">{route.confidence}</span>
       </div>
+      {route.provenance && <p className="route-source">{route.provenance.source} · {route.provenance.status}</p>}
+      {route.officialSchedule?.length > 0 && <p className="official-times">Official departures: {route.officialSchedule.map((item) => item.departure.slice(0, 5)).join(', ')}</p>}
     </div>
   )
 }
 
 function App() {
+  const initialMeeting = useMemo(initialMeetingDate, [])
   const [form, setForm] = useState({
     person1: '', location1: '', person2: '', location2: '',
     location1Coords: null, location2Coords: null,
-    date: new Date().toISOString().slice(0, 10), time: '19:20', duration: '90', purpose: 'Romantic date', moods: ['Quiet', 'Scenic'],
+    date: initialMeeting.date, time: initialMeeting.time, duration: '90', purpose: 'Romantic date', moods: ['Quiet', 'Scenic'],
     travelBudget: 120, meetingBudget: 800, maxWalking: 900, returnRequired: true,
   })
   const [view, setView] = useState('form')
@@ -191,20 +153,21 @@ function App() {
   const [sort, setSort] = useState('match')
   const [selectedId, setSelectedId] = useState(1)
   const [copied, setCopied] = useState(false)
-  const [venueOptions, setVenueOptions] = useState(seededVenues)
-  const [dataSource, setDataSource] = useState('curated')
-  const [sourceMessage, setSourceMessage] = useState('Curated Kochi data is ready as a fallback.')
+  const [venueOptions, setVenueOptions] = useState([])
+  const [dataSource, setDataSource] = useState('curated-model')
+  const [sourceMessage, setSourceMessage] = useState('')
+  const [formError, setFormError] = useState('')
+  const [candidateCount, setCandidateCount] = useState(0)
 
   const ranked = useMemo(() => {
-    const calculated = venueOptions.map((venue) => scoreVenue(venue, form))
-    return calculated.sort((a, b) => {
+    return [...venueOptions].sort((a, b) => {
       if (sort === 'fairness') return b.fairness - a.fairness
       if (sort === 'fastest') return Math.max(...a.routes.map((r) => r.minutes)) - Math.max(...b.routes.map((r) => r.minutes))
       if (sort === 'cheapest') return a.totalCost - b.totalCost
       if (sort === 'walking') return Math.max(...a.routes.map((r) => r.walk)) - Math.max(...b.routes.map((r) => r.walk))
       return b.match + b.fairness - (a.match + a.fairness)
     })
-  }, [form, sort, venueOptions])
+  }, [sort, venueOptions])
 
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }))
   const updateLocation = (locationKey, coordinateKey, value) => setForm((current) => ({
@@ -214,8 +177,8 @@ function App() {
   }))
   const updatePlace = (locationKey, coordinateKey, place) => setForm((current) => ({
     ...current,
-    [locationKey]: place.address,
-    [coordinateKey]: { lat: place.lat, lng: place.lng, placeId: place.placeId },
+    [locationKey]: place.address || place.name,
+    [coordinateKey]: { lat: place.lat, lon: place.lon, placeId: place.placeId, name: place.name, area: place.area, source: place.source },
   }))
   const toggleMood = (mood) => setForm((current) => ({
     ...current,
@@ -224,30 +187,35 @@ function App() {
 
   const search = async (event) => {
     event.preventDefault()
+    setFormError('')
     setView('loading')
     setLoadingIndex(0)
     const startedAt = Date.now()
     let step = 0
+    let succeeded = false
     const interval = window.setInterval(() => {
       step += 1
       setLoadingIndex(Math.min(step, loadingSteps.length - 1))
     }, 420)
 
     try {
+      const controller = new AbortController()
+      const requestTimeout = window.setTimeout(() => controller.abort(), 12000)
       const response = await fetch('/api/venues/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
+        signal: controller.signal,
       })
+      window.clearTimeout(requestTimeout)
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || 'Venue search failed')
       if (!payload.venues?.length) throw new Error('No suitable venues were returned')
 
       setVenueOptions(payload.venues)
       setDataSource(payload.source)
-      setSourceMessage(payload.warning || (payload.source === 'google'
-        ? `${payload.venues.length} live Google venues with transit routes were compared.`
-        : 'Using the curated Kochi fallback dataset.'))
+      setSourceMessage(payload.warning)
+      setCandidateCount(payload.candidateCount || payload.venues.length)
       setSelectedId(payload.venues[0].id)
       if (payload.origins) {
         setForm((current) => ({
@@ -256,16 +224,14 @@ function App() {
           location2Coords: payload.origins[1],
         }))
       }
+      succeeded = true
     } catch (error) {
-      setVenueOptions(seededVenues)
-      setDataSource('curated')
-      setSourceMessage(`${error.message}. Showing reliable curated Kochi data instead.`)
-      setSelectedId(seededVenues[0].id)
+      setFormError(error.name === 'AbortError' ? 'Search timed out. Check that the Halfway API is running, then try again.' : error.message)
     } finally {
       const remainingDelay = Math.max(0, 1500 - (Date.now() - startedAt))
       await new Promise((resolve) => window.setTimeout(resolve, remainingDelay))
       window.clearInterval(interval)
-      setView('results')
+      setView(succeeded ? 'results' : 'form')
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }
   }
@@ -318,7 +284,7 @@ function App() {
           <button className="share-button" onClick={share}>{copied ? <Check size={18} /> : <Share2 size={18} />}{copied ? 'Copied' : 'Share plan'}</button>
         </header>
         <section className="results-hero">
-          <p className="eyebrow">{ranked.length} places compared · {dataSource === 'google' ? 'Live Google data' : 'Curated fallback'}</p>
+          <p className="eyebrow">{ranked.length} shown from {candidateCount} candidates · Open data</p>
           <h1>Fair options for <em>both of you.</em></h1>
           <p>Ranked by travel effort, cost, walking, opening hours, and your preferences.</p>
           <div className={`source-note ${dataSource}`}>{sourceMessage}</div>
@@ -352,7 +318,7 @@ function App() {
                       ))}
                       <div className="fair-score"><span>Fairness</span><strong>{venue.fairness}<small>/100</small></strong></div>
                     </div>
-                    <div className="venue-meta"><span><IndianRupee size={15} />₹{venue.venueCost} for two</span><span><Clock3 size={15} />Open until {venue.closes}</span><span><Route size={15} />{venue.walkFromTransit} m from transit</span><span>{venue.rating} rating{venue.ratingCount ? ` · ${venue.ratingCount} reviews` : ''}</span></div>
+                    <div className="venue-meta"><span><IndianRupee size={15} />₹{venue.venueCost} budget guide</span><span><Clock3 size={15} />Open until {venue.closes}</span><span><Route size={15} />{venue.walkFromTransit} m from transit</span><span>{venue.meetsConstraints ? 'Meets all limits' : `Check ${venue.constraintIssues.join(', ')}`}</span></div>
                     <details onClick={(e) => e.stopPropagation()}>
                       <summary>See both journeys <ArrowRight size={16} /></summary>
                       <div className="journey-grid"><Journey name={form.person1} route={venue.routes[0]} /><Journey name={form.person2} route={venue.routes[1]} /></div>
@@ -364,11 +330,7 @@ function App() {
             </div>
           </div>
           <aside className="map-panel">
-            {selected.source === 'google' ? (
-              <a className="google-map-link" href={selected.googleMapsUri} target="_blank" rel="noreferrer"><MapPin size={28} /><strong>View live place details</strong><span>Open {selected.name} in Google Maps</span><ArrowRight size={18} /></a>
-            ) : (
-              <iframe title={`Map showing ${selected.name}`} src={`https://www.openstreetmap.org/export/embed.html?bbox=${selected.lon - 0.018}%2C${selected.lat - 0.012}%2C${selected.lon + 0.018}%2C${selected.lat + 0.012}&layer=mapnik&marker=${selected.lat}%2C${selected.lon}`} />
-            )}
+            <iframe title={`Map showing ${selected.name}`} src={`https://www.openstreetmap.org/export/embed.html?bbox=${selected.lon - 0.018}%2C${selected.lat - 0.012}%2C${selected.lon + 0.018}%2C${selected.lat + 0.012}&layer=mapnik&marker=${selected.lat}%2C${selected.lon}`} />
             <div className="map-caption"><span className="map-pin"><MapPin size={18} /></span><div><strong>{selected.name}</strong><span>{selected.area} · {selected.fairness}/100 fairness</span></div></div>
             <button className="edit-plan" onClick={() => setView('form')}>Edit preferences</button>
           </aside>
@@ -386,18 +348,19 @@ function App() {
         <p>Choose two starting points. Halfway balances travel time, cost, walking, and the kind of meeting you want.</p>
       </section>
       <form className="planner" onSubmit={search}>
+        {formError && <div className="form-error">{formError}</div>}
         <section className="people-section">
           <div className="person-card person-one">
             <div className="person-label"><span>1</span><div><strong>First traveller</strong><small>Where are they starting?</small></div></div>
             <label>Name<input required value={form.person1} onChange={(e) => update('person1', e.target.value)} placeholder="Enter you name" /></label>
-            <label>Starting location<GooglePlaceField value={form.location1} onChange={(value) => updateLocation('location1', 'location1Coords', value)} onPlaceSelect={(place) => updatePlace('location1', 'location1Coords', place)} travellerName={form.person1} /></label>
+            <label>Starting location<LocationField value={form.location1} onChange={(value) => updateLocation('location1', 'location1Coords', value)} onPlaceSelect={(place) => updatePlace('location1', 'location1Coords', place)} /></label>
             <div className="transport-row"><span><TrainFront size={15} />Metro</span><span><Bus size={15} />Bus</span><span><Ship size={15} />Water Metro</span></div>
           </div>
           <div className="meeting-mark"><span><MapPin size={22} /></span><small>FAIR<br />SPOT</small></div>
           <div className="person-card person-two">
             <div className="person-label"><span>2</span><div><strong>Second traveller</strong><small>Where are they starting?</small></div></div>
             <label>Name<input required value={form.person2} onChange={(e) => update('person2', e.target.value)} placeholder="Enter you name" /></label>
-            <label>Starting location<GooglePlaceField value={form.location2} onChange={(value) => updateLocation('location2', 'location2Coords', value)} onPlaceSelect={(place) => updatePlace('location2', 'location2Coords', place)} travellerName={form.person2} /></label>
+            <label>Starting location<LocationField value={form.location2} onChange={(value) => updateLocation('location2', 'location2Coords', value)} onPlaceSelect={(place) => updatePlace('location2', 'location2Coords', place)} /></label>
             <div className="transport-row"><span><TrainFront size={15} />Metro</span><span><Bus size={15} />Bus</span><span><Ship size={15} />Water Metro</span></div>
           </div>
         </section>
@@ -418,9 +381,9 @@ function App() {
           </div>
           <label className="toggle"><input type="checkbox" checked={form.returnRequired} onChange={(e) => update('returnRequired', e.target.checked)} /><span /><div><strong>Public transport home required</strong><small>Only show plans with a practical return journey</small></div></label>
         </section>
-        <div className="submit-zone"><div><strong>Ready to meet in the middle?</strong><span>We’ll search live Kochi venues and compare transit for both travellers.</span></div><button type="submit"><Search size={19} />Find our fair spot<ArrowRight size={19} /></button></div>
+        <div className="submit-zone"><div><strong>Ready to meet in the middle?</strong><span>Official Metro and Water Metro data, with modelled bus and walking access.</span></div><button type="submit"><Search size={19} />Find our fair spot<ArrowRight size={19} /></button></div>
       </form>
-      <footer><span>Halfway</span><p>Live Google Places and Routes when configured, with a clearly labelled curated fallback. <b>Built using OpenAI Codex.</b></p></footer>
+      <footer><span>Halfway</span><p>Contains data provided by Kochi Metro Rail Limited and OpenStreetMap contributors. Water Metro schedules come from the official operator. <b>Built using OpenAI Codex.</b></p></footer>
     </main>
   )
 }

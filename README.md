@@ -1,69 +1,57 @@
 # Halfway
 
-A fair meeting-place planner for couples, friends, and teams. Halfway compares
-multimodal travel time, walking, transfers, budget, venue fit, and return-trip
-feasibility to recommend places that divide the effort fairly.
+Halfway is a Kochi-focused fair meeting-place planner. It compares both
+travellers' time, fare, walking, transfers, budgets, venue hours, preferences,
+and return feasibility instead of choosing a simple geographic midpoint.
 
-Halfway now has a React client and a Node API. When Google Maps is configured,
-the API discovers current Kochi venues, geocodes typed origins, requests public
-transport routes for both travellers, and checks return-route feasibility. If
-Google is unavailable, the app automatically uses the curated Kochi dataset.
+## Data honesty
 
-## Google Maps setup
+Halfway deliberately distinguishes official data from modelled values:
 
-Enable these APIs in one Google Cloud project:
+- Exact origins come from browser GPS, a selected Kochi landmark, or a
+  user-triggered OpenStreetMap Nominatim lookup.
+- Metro stops and fares come from KMRL's latest published GTFS archive. The
+  archive declares validity through 2025-12-31, so current service frequency is
+  taken from KMRL's timetable effective 2026-02-17 and is labelled modelled.
+- Water Metro boat times, fares, and departures come from the official Kochi
+  Water Metro website and schedule endpoint.
+- Bus and walking access legs are planning estimates because a current,
+  complete open Kochi bus GTFS feed is not available in this project.
+- Venue prices are budget guides from the curated demo dataset, not live menu
+  prices. The interface labels them accordingly.
 
-- Places API (New)
-- Routes API
-- Geocoding API
-- Maps JavaScript API (only needed for browser autocomplete)
+No paid API key is required. Never present modelled values as live departures.
 
-Create `.env` in the project root:
-
-```bash
-GOOGLE_MAPS_API_KEY=your_server_key
-VITE_GOOGLE_MAPS_API_KEY=your_browser_key
-API_PORT=8787
-```
-
-Keep the server key restricted to Places, Routes, and Geocoding APIs. Restrict
-the browser key to your localhost and deployed website origins.
-
-## Getting Started
+## Run
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173` in your browser.
+Open `http://127.0.0.1:5173`.
 
-## Scripts
-
-- `npm run dev` starts the React client and Node API together.
-- `npm run dev:web` starts only the React client.
-- `npm run start:api` starts only the production-style API process.
-- `npm run build` creates a production build in `dist/`.
-- `npm run preview` serves the production build locally.
-- `npm run lint` checks the project with ESLint.
-
-## Project Structure
-
-```text
-.
-├── public/
-├── src/
-│   ├── App.css
-│   ├── App.jsx
-│   ├── data/
-│   │   └── venues.js
-│   └── main.jsx
-├── server/
-│   └── index.js
-├── .env.example
-├── .gitignore
-├── eslint.config.js
-├── index.html
-├── package.json
-└── README.md
+```bash
+npm test
+npm run lint
+npm run build
 ```
+
+## Architecture
+
+- React 19 + Vite frontend
+- Node.js + Express API
+- OpenStreetMap/Nominatim geocoding with disk caching and rate limiting
+- Official KMRL GTFS stored at `data/otp/kochi-metro.gtfs.zip`
+- Official Kochi Water Metro schedule integration
+- Deterministic fairness and constraint scoring in `server/planner.js`
+- Curated Kochi venues in `src/data/venues.js`
+
+## Attribution
+
+Contains data provided by Kochi Metro Rail Limited.
+
+Map and geocoding data © OpenStreetMap contributors, available under the ODbL.
+Water Metro information is retrieved from the official Kochi Water Metro site.
+
+This project is not endorsed by KMRL, Kochi Water Metro, or OpenStreetMap.

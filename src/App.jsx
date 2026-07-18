@@ -19,110 +19,13 @@ import {
   WalletCards,
 } from 'lucide-react'
 import './App.css'
+import { venues } from './data/venues.js'
 
 const loadingSteps = [
   'Finding reachable neighbourhoods',
   'Comparing public-transport journeys',
   'Checking budgets and opening hours',
   'Balancing both travellers\' effort',
-]
-
-const venues = [
-  {
-    id: 1,
-    name: 'Kashi Art Cafe',
-    area: 'Fort Kochi',
-    kind: 'Cafe & art space',
-    tags: ['Quiet', 'Scenic', 'Food-focused'],
-    rating: 4.5,
-    quiet: 86,
-    venueCost: 650,
-    closes: '10:00 PM',
-    walkFromTransit: 220,
-    reason: 'A calm courtyard, enough time for a relaxed conversation, and nearly equal journeys via Water Metro.',
-    lat: 9.9665,
-    lon: 76.2424,
-    routes: [
-      { minutes: 43, fare: 58, walk: 720, transfers: 2, wait: 7, confidence: 'High', leave: '6:37 PM', returnBy: '9:48 PM', steps: ['Metro to MG Road', 'Walk 600 m to High Court Water Metro', 'Water Metro to Fort Kochi', 'Walk 120 m to Kashi'] },
-      { minutes: 39, fare: 52, walk: 610, transfers: 2, wait: 6, confidence: 'High', leave: '6:41 PM', returnBy: '9:45 PM', steps: ['Bus to Kaloor Metro', 'Metro to MG Road', 'Bus to High Court Junction', 'Water Metro to Fort Kochi', 'Walk 180 m to Kashi'] },
-    ],
-  },
-  {
-    id: 2,
-    name: 'Subhash Bose Park',
-    area: 'Marine Drive',
-    kind: 'Waterfront public space',
-    tags: ['Outdoor', 'Scenic', 'Casual'],
-    rating: 4.4,
-    quiet: 72,
-    venueCost: 80,
-    closes: '9:00 PM',
-    walkFromTransit: 350,
-    reason: 'The lowest-cost option with an open waterfront setting and balanced bus-plus-metro connections.',
-    lat: 9.9718,
-    lon: 76.2783,
-    routes: [
-      { minutes: 29, fare: 32, walk: 620, transfers: 1, wait: 5, confidence: 'High', leave: '6:51 PM', returnBy: '9:30 PM', steps: ['Metro to Maharaja\'s College', 'Walk 620 m through Park Avenue'] },
-      { minutes: 32, fare: 28, walk: 480, transfers: 1, wait: 7, confidence: 'Medium', leave: '6:48 PM', returnBy: '9:22 PM', steps: ['Bus to Kaloor Junction', 'Bus to Menaka', 'Walk 480 m to the park entrance'] },
-    ],
-  },
-  {
-    id: 3,
-    name: 'Ernakulam Public Library',
-    area: 'Convent Road',
-    kind: 'Library & reading room',
-    tags: ['Quiet', 'Laptop-friendly', 'Work'],
-    rating: 4.3,
-    quiet: 94,
-    venueCost: 40,
-    closes: '8:00 PM',
-    walkFromTransit: 430,
-    reason: 'The quietest choice for focused work, with direct transit and almost no difference in effort.',
-    lat: 9.9814,
-    lon: 76.2815,
-    routes: [
-      { minutes: 25, fare: 25, walk: 510, transfers: 0, wait: 4, confidence: 'High', leave: '6:55 PM', returnBy: '8:10 PM', steps: ['Metro to MG Road', 'Walk 510 m via Convent Road'] },
-      { minutes: 27, fare: 22, walk: 430, transfers: 1, wait: 5, confidence: 'Medium', leave: '6:53 PM', returnBy: '8:05 PM', steps: ['Bus to Kaloor', 'Bus to Padma Junction', 'Walk 430 m to the library'] },
-    ],
-  },
-  {
-    id: 4,
-    name: 'French Toast',
-    area: 'Panampilly Nagar',
-    kind: 'Bistro & cafe',
-    tags: ['Private', 'Food-focused', 'Date'],
-    rating: 4.4,
-    quiet: 78,
-    venueCost: 900,
-    closes: '10:30 PM',
-    walkFromTransit: 300,
-    reason: 'A comfortable date setting with late closing hours and good return options for both travellers.',
-    lat: 9.9607,
-    lon: 76.2941,
-    routes: [
-      { minutes: 34, fare: 42, walk: 490, transfers: 1, wait: 6, confidence: 'High', leave: '6:46 PM', returnBy: '10:15 PM', steps: ['Metro to Kadavanthra', 'Auto first-mile for 1.2 km', 'Walk 190 m to the cafe'] },
-      { minutes: 38, fare: 35, walk: 560, transfers: 1, wait: 8, confidence: 'Medium', leave: '6:42 PM', returnBy: '10:05 PM', steps: ['Bus to Kaloor', 'Bus to Panampilly Nagar', 'Walk 300 m to the cafe'] },
-    ],
-  },
-  {
-    id: 5,
-    name: 'Cafe Papaya',
-    area: 'Palarivattom',
-    kind: 'Cafe & creative venue',
-    tags: ['Lively', 'Friends', 'Late-night'],
-    rating: 4.2,
-    quiet: 58,
-    venueCost: 720,
-    closes: '11:00 PM',
-    walkFromTransit: 540,
-    reason: 'A lively late-evening option with simple metro access and plenty of time after arrival.',
-    lat: 10.0032,
-    lon: 76.3066,
-    routes: [
-      { minutes: 31, fare: 30, walk: 680, transfers: 0, wait: 4, confidence: 'High', leave: '6:49 PM', returnBy: '10:40 PM', steps: ['Metro to Palarivattom', 'Walk 680 m to Cafe Papaya'] },
-      { minutes: 22, fare: 18, walk: 540, transfers: 0, wait: 5, confidence: 'Medium', leave: '6:58 PM', returnBy: '10:35 PM', steps: ['Bus to Palarivattom Junction', 'Walk 540 m to Cafe Papaya'] },
-    ],
-  },
 ]
 
 const purposes = ['Romantic date', 'Business meeting', 'Friends hanging out', 'Casual catch-up', 'Work / study session']
@@ -191,7 +94,7 @@ function GooglePlaceField({ value, onChange, onPlaceSelect, travellerName }) {
           locationBias: { center: { lat: 9.9816, lng: 76.2999 }, radius: 50000 },
         })
         autocomplete.className = 'google-place-autocomplete'
-        autocomplete.placeholder = 'Search Google Maps'
+        autocomplete.placeholder = 'Enter you location'
         autocomplete.description = `Starting location for ${travellerName || 'traveller'}`
         autocomplete.value = value
         autocomplete.addEventListener('input', handleInput)
@@ -219,7 +122,7 @@ function GooglePlaceField({ value, onChange, onPlaceSelect, travellerName }) {
             value={value}
             onChange={(event) => onChange(event.target.value)}
             
-            placeholder="Search Google Maps"
+            placeholder="Enter you location"
           />
         </div>
         {loadError && <small className="location-message">{loadError}</small>}
@@ -279,7 +182,7 @@ function Journey({ name, route }) {
 
 function App() {
   const [form, setForm] = useState({
-    person1: 'Nathan', location1: 'Aluva Metro Station', person2: 'Anjali', location2: 'Kakkanad Medical College',
+    person1: '', location1: '', person2: '', location2: '',
     location1Coords: { lat: 10.1097, lng: 76.3505 }, location2Coords: { lat: 10.0394, lng: 76.3286 },
     date: new Date().toISOString().slice(0, 10), time: '19:20', duration: '90', purpose: 'Romantic date', moods: ['Quiet', 'Scenic'],
     travelBudget: 120, meetingBudget: 800, maxWalking: 900, returnRequired: true,
@@ -376,9 +279,9 @@ function App() {
           <button className="share-button" onClick={share}>{copied ? <Check size={18} /> : <Share2 size={18} />}{copied ? 'Copied' : 'Share plan'}</button>
         </header>
         <section className="results-hero">
-          <p className="eyebrow">Five fair matches found</p>
-          <h1>Meet in the middle.<br /><em>For real.</em></h1>
-          <p>We compared multimodal journeys, cost, walking, opening hours, and the effort each person puts in.</p>
+          <p className="eyebrow">{ranked.length} places compared</p>
+          <h1>Fair options for <em>both of you.</em></h1>
+          <p>Ranked by travel effort, cost, walking, opening hours, and your preferences.</p>
         </section>
         <section className="winner-grid">
           {winners.map(({ label, icon, venue }, index) => (
@@ -434,22 +337,22 @@ function App() {
     <main className="planner-page">
       <header className="landing-nav"><div className="brand"><span className="brand-mark"><MapPin size={21} /></span>Halfway</div><span className="demo-pill">Kochi demo</span></header>
       <section className="intro">
-        <p className="eyebrow">Fair plans. Better time together.</p>
-        <h1>A place worth meeting,<br /><em>without the unfair journey.</em></h1>
-        <p>Tell us where you’re both starting. We’ll find places that balance travel time, cost, walking, and the kind of time you want.</p>
+        <p className="eyebrow">Fair meeting planner</p>
+        <h1>Meet somewhere <em>fair.</em></h1>
+        <p>Choose two starting points. Halfway balances travel time, cost, walking, and the kind of meeting you want.</p>
       </section>
       <form className="planner" onSubmit={search}>
         <section className="people-section">
           <div className="person-card person-one">
             <div className="person-label"><span>1</span><div><strong>First traveller</strong><small>Where are they starting?</small></div></div>
-            <label>Name<input required value={form.person1} onChange={(e) => update('person1', e.target.value)} placeholder="Person 1 name" /></label>
+            <label>Name<input required value={form.person1} onChange={(e) => update('person1', e.target.value)} placeholder="Enter you name" /></label>
             <label>Starting location<GooglePlaceField value={form.location1} onChange={(value) => update('location1', value)} onPlaceSelect={(place) => updatePlace('location1', 'location1Coords', place)} travellerName={form.person1} /></label>
             <div className="transport-row"><span><TrainFront size={15} />Metro</span><span><Bus size={15} />Bus</span><span><Ship size={15} />Water Metro</span></div>
           </div>
           <div className="meeting-mark"><span><MapPin size={22} /></span><small>FAIR<br />SPOT</small></div>
           <div className="person-card person-two">
             <div className="person-label"><span>2</span><div><strong>Second traveller</strong><small>Where are they starting?</small></div></div>
-            <label>Name<input required value={form.person2} onChange={(e) => update('person2', e.target.value)} placeholder="Person 2 name" /></label>
+            <label>Name<input required value={form.person2} onChange={(e) => update('person2', e.target.value)} placeholder="Enter you name" /></label>
             <label>Starting location<GooglePlaceField value={form.location2} onChange={(value) => update('location2', value)} onPlaceSelect={(place) => updatePlace('location2', 'location2Coords', place)} travellerName={form.person2} /></label>
             <div className="transport-row"><span><TrainFront size={15} />Metro</span><span><Bus size={15} />Bus</span><span><Ship size={15} />Water Metro</span></div>
           </div>
@@ -471,7 +374,7 @@ function App() {
           </div>
           <label className="toggle"><input type="checkbox" checked={form.returnRequired} onChange={(e) => update('returnRequired', e.target.checked)} /><span /><div><strong>Public transport home required</strong><small>Only show plans with a practical return journey</small></div></label>
         </section>
-        <div className="submit-zone"><div><strong>Ready to meet in the middle?</strong><span>We’ll compare five Kochi venues and every useful route combination.</span></div><button type="submit"><Search size={19} />Find our fair spot<ArrowRight size={19} /></button></div>
+        <div className="submit-zone"><div><strong>Ready to meet in the middle?</strong><span>We’ll compare {venues.length} Kochi venues and every useful route combination.</span></div><button type="submit"><Search size={19} />Find our fair spot<ArrowRight size={19} /></button></div>
       </form>
       <footer><span>Halfway</span><p>Demo routes use curated Kochi transit data. Bus timings are estimates and include confidence labels.</p></footer>
     </main>
